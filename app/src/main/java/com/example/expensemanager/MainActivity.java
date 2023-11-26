@@ -2,6 +2,7 @@ package com.example.expensemanager;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
 
 import android.app.ProgressDialog;
 import android.content.Intent;
@@ -11,6 +12,9 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import com.example.expensemanager.databinding.ActivityMainBinding;
+import com.github.mikephil.charting.data.PieData;
+import com.github.mikephil.charting.data.PieDataSet;
+import com.github.mikephil.charting.data.PieEntry;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.auth.AuthResult;
@@ -19,15 +23,21 @@ import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QuerySnapshot;
 
+import java.util.ArrayList;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements OnItemsClick{
     ActivityMainBinding binding;
+    private ExpensesAdapter expensesAdapter;
+    private long income=0, expense=0;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+        expensesAdapter = new ExpensesAdapter(this, this);
+        binding.recycler.setAdapter(expensesAdapter);
+        binding.recycler.setLayoutManager(new LinearLayoutManager(this));
         Intent intent = new Intent(MainActivity.this, AddExpenseActivity.class);
         binding.addIncome.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -75,10 +85,11 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        getdata();
+        income=0; expense=0;
+        getData();
     }
 
-    private void getdata() {
+    private void getData() {
         FirebaseFirestore
                 .getInstance()
                 .collection("expenses")
@@ -87,11 +98,45 @@ public class MainActivity extends AppCompatActivity {
                 .addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
                     @Override
                     public void onSuccess(QuerySnapshot queryDocumentSnapshots) {
+                        expensesAdapter.clear();
                         List<DocumentSnapshot> dsList = queryDocumentSnapshots.getDocuments();
                         for(DocumentSnapshot ds:dsList){
                             ExpenseModel expenseModel = ds.toObject(ExpenseModel.class);
+                            if (expenseModel.getType().equals("Income")){
+                                income += expenseModel.getAmount();
+                            }else {
+                                expense += expenseModel.getAmount();
+                            }
+                            expensesAdapter.add(expenseModel);
                         }
+                        setUpGraph();
                     }
                 });
+    }
+
+    private void setUpGraph() {
+        List<PieEntry> pieEntryList = new ArrayList<>();
+        List<Integer> colors = new ArrayList<>();
+        if (income != 0){
+            pieEntryList.add(new PieEntry(income, "Income"));
+            colors.add(getResources().getColor(R.color.teal_700));
+        }
+        if (expense != 0){
+            pieEntryList.add(new PieEntry(expense, "Expense"));
+            colors.add(getResources().getColor(R.color.red));
+        }
+        PieDataSet pieDataSet = new PieDataSet(pieEntryList, String.valueOf(income-expense));
+        pieDataSet.setColors(colors);
+        pieDataSet.setValueTextColor(getResources().getColor(R.color.white));
+        PieData pieData = new PieData(pieDataSet);
+        binding.pieChart.setData(pieData);
+        binding.pieChart.invalidate();
+    }
+
+    @Override
+    public void onClick(ExpenseModel expenseModel) {
+        Intent intent = new Intent(MainActivity.this, AddExpenseActivity.class);
+        intent.putExtra("model", expenseModel);
+        startActivity(intent);
     }
 }
